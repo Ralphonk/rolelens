@@ -1,0 +1,59 @@
+generator client {
+ provider = "prisma-client-js"
+ engineType = "client"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(cuid())
+ name String
+ email String @unique
+ passwordHash String
+ createdAt DateTime @default(now())
+ resumes Resume[]
+ jobs Job[]
+ analyses Analysis[]
+ sessions Session[]
+}
+model Session {
+ id String @id
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ expiresAt DateTime
+ @@index([userId])
+}
+model Resume {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ name String
+ text String
+ createdAt DateTime @default(now())
+ analyses Analysis[]
+ @@index([userId, createdAt])
+}
+model Job {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ title String
+ company String
+ description String
+ createdAt DateTime @default(now())
+ analyses Analysis[]
+ @@index([userId])
+}
+model Analysis {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ resumeId String?
+ resume Resume? @relation(fields:[resumeId], references:[id], onDelete:SetNull)
+ jobId String
+ job Job @relation(fields:[jobId], references:[id], onDelete:Cascade)
+ result Json
+ createdAt DateTime @default(now())
+ @@index([userId, createdAt])
+}
