@@ -1,6 +1,29 @@
 # RoleLens
 
-A separate full-stack resume-to-job matcher. Shortlist is not modified or connected.
+A full-stack resume-to-job matcher that helps you compare your experience with a job description, understand skill gaps, and review evidence-based feedback.
+
+**[Try RoleLens live](https://rolelens-resume.vercel.app)**
+
+## Features
+
+- Upload a text-based PDF (up to 5 MB) or paste resume text.
+- Compare a resume with a job description using Gemini structured analysis and application-calculated scores.
+- Explore a local keyword preview with built-in sample data—no account or AI request required.
+- Save resume versions, revisit match history, and explore score and skill-gap insights.
+- Review matching evidence and export reports as JSON.
+- Sign in with password-based authentication and revocable cookie sessions.
+- Responsive navigation, mobile/tablet account controls, loading skeletons, and subtle page/dialog animations.
+- Logout confirmation, success notifications, password visibility controls, and reduced-motion support.
+
+## Screenshots
+
+Captured from the guest workspace with sample data; no private account or resume information is shown.
+
+![RoleLens resume and job matching workspace](docs/images/workspace.png)
+
+![RoleLens local keyword preview report using sample data](docs/images/sample-report.png)
+
+The sample report is a local keyword preview, not a Gemini-generated analysis.
 
 ## Stack
 
@@ -20,7 +43,7 @@ Local keyword preview and PDF extraction work without database or Gemini credent
 
 ## Enable real accounts and AI
 
-Use a NEW Neon/PostgreSQL database, not the Shortlist database. Set `DATABASE_URL`.
+Use your Neon/PostgreSQL database connection string as `DATABASE_URL`.
 Alternatively, `docker compose up -d` creates a local development database using the sample URL (development credentials only).
 Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and put it in `JWT_SECRET`.
 Run `npm run db:migrate`.
@@ -63,12 +86,41 @@ The first version does not include email verification, password recovery, or ori
 `npx playwright install chromium` then `npm run test:e2e`.
 CI runs these checks. Real PostgreSQL/AI end-to-end checks require configured credentials.
 
-## Deploy later
+## Deployment: Vercel + Render + Neon
 
-No deployment or GitHub push is performed automatically.
+The frontend is deployed on Vercel, the Express API on Render, and PostgreSQL on Neon. Keep credentials on the backend; never commit `.env`.
+
+### Vercel (frontend)
+
+Select the Next.js framework and set:
+
+```env
+API_INTERNAL_URL=https://YOUR-BACKEND.onrender.com
+```
+
+### Render (backend)
+
+Use the Node runtime with the repository root as the working directory.
+
+Build: `npm ci --include=dev && npm run db:generate && npx tsc -p server/tsconfig.json`
+
+Start: `node dist/server/index.js`
+
+```env
+NODE_ENV=production
+PORT=10000
+API_PORT=10000
+APP_ORIGIN=https://rolelens-resume.vercel.app
+DATABASE_URL=YOUR_NEON_CONNECTION_STRING
+JWT_SECRET=YOUR_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
+GEMINI_API_KEY=YOUR_GEMINI_KEY
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+The current API reads `API_PORT`; set it to the same value as Render's `PORT`. `APP_ORIGIN` must exactly match your frontend origin, without a trailing slash. Update it after any frontend domain change to avoid rejected POST requests. Use plain values, not Markdown links. Redeploy after changing environment variables.
 
 - Vercel: deploy this directory with Next.js; set `API_INTERNAL_URL` to your HTTPS Express service.
-- Railway/Render: run `npm ci && npm run db:generate && npx tsc -p server/tsconfig.json`, then `node dist/server/index.js`; set `API_PORT` to the provider's port.
+- Do not use `npm start` for a backend-only Render service: that script launches both servers.
 - Set backend `APP_ORIGIN` to the exact public frontend origin, `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET`, and `GEMINI_API_KEY`.
 - Run `npm run db:migrate` once as a release step.
 - Dockerfile runs both servers; Docker Compose currently provides only the development database.
