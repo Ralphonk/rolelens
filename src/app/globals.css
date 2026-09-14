@@ -11,6 +11,26 @@
 * {
   box-sizing: border-box;
 }
+/* Native scrolling, styled to match RoleLens. Keep the page thumb easy to grab. */
+html { scrollbar-color: #718b65 #eef2e9; }
+.modal-card, textarea, .sidebar nav {
+  scrollbar-color: #718b65 #eef2e9;
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar { width: 12px; height: 10px; }
+::-webkit-scrollbar-track { background: #eef2e9; }
+::-webkit-scrollbar-thumb {
+  background: #718b65;
+  border: 3px solid #eef2e9;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: #174c3c; }
+::-webkit-scrollbar-corner { background: #eef2e9; }
+@media (forced-colors: active) {
+  html, .modal-card, textarea, .sidebar nav { scrollbar-color: auto; scrollbar-width: auto; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: Canvas; }
+  ::-webkit-scrollbar-thumb { background: ButtonText; border-color: Canvas; }
+}
 body {
   margin: 0;
   background: var(--background);
@@ -1080,7 +1100,7 @@ footer .text-button {
 .modal-card h2 {
   font-size: 29px;
 }
-.modal-card > p {
+.modal-card > p, .auth-screen > p {
   font-size: 13px;
   color: var(--muted);
   margin-top: 10px;
@@ -1092,6 +1112,18 @@ footer .text-button {
 }
 .password-field {
   position: relative;
+}
+.otp-boxes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.otp-boxes input { padding: 12px 0; text-align: center; font-size: 22px; font-weight: 600; min-width: 0; }
+.recovery-back { margin-top: 20px; }
+.auth-screen { transform-origin: center top; }
+@media (prefers-reduced-motion: no-preference) {
+  .auth-screen { animation: auth-screen-bounce 360ms both; }
+}
+@keyframes auth-screen-bounce {
+  0% { opacity: 0; transform: translateY(10px) scale(.97); }
+  65% { opacity: 1; transform: translateY(-2px) scale(1.008); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .password-field input {
   padding-right: 45px;
