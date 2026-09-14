@@ -4,6 +4,7 @@ import { X, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { api } from "@/lib/api";
 import type { User } from "@/lib/types";
+import { PasswordRecovery } from "./password-recovery";
 export function AuthDialog({
   open,
   onOpenChange,
@@ -13,12 +14,13 @@ export function AuthDialog({
   onOpenChange: (v: boolean) => void;
   onSuccess: (u: User, registered: boolean) => void;
 }) {
+  const [recovery, setRecovery] = useState(false);
   const [register, setRegister] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [show, setShow] = useState(false);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(value) => { setRecovery(false); onOpenChange(value); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content className="modal-card">
@@ -26,6 +28,7 @@ export function AuthDialog({
             <X size={20} />
           </Dialog.Close>
           <span className="eyebrow">YOUR NEXT CHAPTER</span>
+          {recovery ? <PasswordRecovery onBack={() => { setRecovery(false); setRegister(false); setError(""); }} /> : <div className="auth-screen" key={register ? "register" : "login"}>
           <Dialog.Title>
             {register ? "Create your workspace" : "Welcome back."}
           </Dialog.Title>
@@ -91,6 +94,7 @@ export function AuthDialog({
             {register && (
               <small>At least 10 characters. Use a unique password.</small>
             )}
+            {!register && <button type="button" className="text-button" disabled={busy} onClick={() => setRecovery(true)}>Forgot password?</button>}
             {error && (
               <p className="error" role="alert">
                 {error}
@@ -118,6 +122,7 @@ export function AuthDialog({
                 : "New here? Create an account"}
             </button>
           </form>
+          </div>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

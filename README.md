@@ -78,7 +78,23 @@ Text is stored only on Save resume. Job descriptions and result evidence are sto
 AI analysis requires a consent checkbox before sending text to Gemini. Free-tier inputs may be used to improve Google products. Use sample or anonymized resumes, not sensitive personal data. Review Google's API terms before enabling real-user uploads.
 Ownership is checked on every private record operation. JWTs are not kept in localStorage. Passwords are bcrypt-hashed.
 No API keys, credentials or complete resume text are logged.
-The first version does not include email verification, password recovery, or original-PDF downloads.
+Password recovery uses emailed six-digit codes (10-minute expiry, five attempts, 60-second resend cooldown), a short-lived single-use reset token, and revokes existing sessions after a password change. It does not include signup email verification or original-PDF downloads.
+
+### Password reset email
+
+For Render Free, use the Brevo HTTPS integration. Verify your sender in Brevo and configure these backend-only variables:
+
+```env
+EMAIL_PROVIDER=brevo
+BREVO_API_KEY=YOUR_BREVO_API_KEY
+BREVO_SENDER_EMAIL=YOUR_VERIFIED_SENDER_EMAIL
+```
+
+Use an API key, not a Brevo SMTP key. Account activation/sending approval may be required. Free-mail senders cannot authenticate their domain; Brevo may replace the sender address with a compliant sending domain. A custom authenticated domain is preferable for production deliverability. SMTP remains available locally with `EMAIL_PROVIDER=smtp`; there is no automatic fallback on provider failure.
+
+Set `SMTP_HOST`, `SMTP_PORT` (465 for Gmail), `SMTP_USER`, `SMTP_PASS` (Google App Password, never the account password), and `EMAIL_FROM` on the backend only. Apply `npm run db:migrate` before restarting the updated backend. Unregistered emails receive the same generic UI message but no email. Delivery failures are logged without credentials; the generic response does not guarantee inbox delivery.
+
+**Hosting limitation:** Render Free blocks outbound SMTP ports 25, 465 and 587. Gmail SMTP requires an SMTP-capable host/plan; use an HTTPS email provider integration for a free Render deployment. See [Render Free limitations](https://render.com/docs/free). Do not publish SMTP credentials.
 
 ## Verification
 

@@ -22,6 +22,7 @@ import {
   analysisSchema,
 } from "./validation.js";
 import { analyzeResume } from "./ai.js";
+import { passwordResetRouter } from "./password-reset.js";
 const app = express();
 app.disable("x-powered-by");
 app.use(helmet());
@@ -51,6 +52,7 @@ const limit = (max: number, minutes: number) =>
     message: { error: "Too many requests. Please wait and try again." },
   });
 app.use("/api", limit(120, 15));
+app.use("/api/auth/password-reset", passwordResetRouter);
 app.get("/api/health", (_req, res) =>
   res.json({
     ok: true,
