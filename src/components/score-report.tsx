@@ -7,17 +7,25 @@ import {
 } from "lucide-react";
 import type { MatchResult } from "../../shared/matching";
 import { Button } from "./ui/button";
+import { useRef, useState } from "react";
 export function ScoreReport({ result }: { result: MatchResult }) {
-  function download() {
-    const blob = new Blob([JSON.stringify(result, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "rolelens-match-report.json";
-    a.click();
-    URL.revokeObjectURL(url);
+  const inFlight = useRef(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  async function download() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setExporting(true);
+    setExportError("");
+    try {
+      const { downloadReportPdf } = await import("../lib/report-pdf");
+      await downloadReportPdf(result);
+    } catch {
+      setExportError("The PDF could not be downloaded. Please try again.");
+    } finally {
+      inFlight.current = false;
+      setExporting(false);
+    }
   }
   return (
     <section className="report" aria-label="Match report">
@@ -26,10 +34,11 @@ export function ScoreReport({ result }: { result: MatchResult }) {
           <span className="eyebrow">YOUR MATCH REPORT</span>
           <h2>A clearer picture of your fit.</h2>
         </div>
-        <Button variant="outline" onClick={download}>
-          <Download size={16} /> Export
+        <Button className="report-export" variant="outline" onClick={download} disabled={exporting} aria-busy={exporting}>
+          <Download size={16} /> {exporting ? "Preparing PDF…" : "Export PDF"}
         </Button>
       </div>
+      {exportError && <p className="error report-export" role="alert">{exportError}</p>}
       {result.mode === "demo" && (
         <p className="notice">
           <FlaskConical size={17} /> Local keyword preview · No AI request was
