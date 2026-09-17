@@ -36,10 +36,10 @@ import type { Analysis, Resume, User } from "@/lib/types";
 import { AnalyticsView } from "./analytics-view";
 import { WorkspaceSkeleton } from "./workspace-skeleton";
 const views = [
-  { name: "New match", icon: ScanLine },
-  { name: "My resumes", icon: FileText },
-  { name: "Match history", icon: History },
-  { name: "Insights", icon: ChartNoAxesCombined },
+  { name: "New match", shortName: "Match", icon: ScanLine },
+  { name: "My resumes", shortName: "Resumes", icon: FileText },
+  { name: "Match history", shortName: "History", icon: History },
+  { name: "Insights", shortName: "Insights", icon: ChartNoAxesCombined },
 ];
 export function MatcherWorkspace() {
   const [initialLoading, setInitialLoading] = useState(true);
@@ -262,14 +262,15 @@ export function MatcherWorkspace() {
           </div>
           <div className="workspace-caption">YOUR WORKSPACE</div>
           <nav aria-label="Main navigation">
-            {views.map(({ name, icon: Icon }) => (
+            {views.map(({ name, shortName, icon: Icon }) => (
               <button
                 key={name}
                 className={view === name ? "nav-active" : ""}
                 onClick={() => navigate(name)}
               >
                 <Icon size={19} />
-                {name}
+                <span className="nav-label-desktop">{name}</span>
+                <span className="nav-label-mobile">{shortName}</span>
                 {name === "New match" && <Plus size={16} className="nav-end" />}
               </button>
             ))}
