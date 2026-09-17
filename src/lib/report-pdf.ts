@@ -95,7 +95,11 @@ export function createReportPdf(result: MatchResult, regular: string, bold: stri
   return pdf;
 }
 
-export async function downloadReportPdf(result: MatchResult, filename = "rolelens-match-report.pdf") {
+export async function buildReportPdf(result: MatchResult) {
   const [regular, bold] = await loadFonts();
-  createReportPdf(result, regular, bold).save(filename);
+  return createReportPdf(result, regular, bold);
+}
+
+export async function downloadReportPdf(result: MatchResult, filename = "rolelens-match-report.pdf") {
+  (await buildReportPdf(result)).save(filename);
 }

@@ -8,29 +8,52 @@ import {
 import type { MatchResult } from "../../shared/matching";
 import { Button } from "./ui/button";
 import { useRef, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+
 export function ScoreReport({ result }: { result: MatchResult }) {
-  const [exportOpen, setExportOpen] = useState(false);
-  const [filename, setFilename] = useState("rolelens-match-report");
-  const filenameInput = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   async function download() {
     if (inFlight.current) return;
-    const name = filename.trim().replace(/(?:\.pdf)+$/i, "").trim();
-    if (!name || /[<>:"/\\|?*\u0000-\u001f]/.test(name) || /[. ]$/.test(name)) {
-      setExportError("Enter a valid filename without special characters such as / or :.");
-      return;
-    }
     inFlight.current = true;
     setExporting(true);
     setExportError("");
     try {
-      const { downloadReportPdf } = await import("../lib/report-pdf");
-      await downloadReportPdf(result, name + ".pdf");
-      setExportOpen(false);
-    } catch {
+      // Open the picker before awaiting imports to preserve the click activation.
+      const pickerWindow = window as Window & {
+        showSaveFilePicker?: (options: {
+          suggestedName: string;
+          types: { description: string; accept: Record<string, string[]> }[];
+        }) => Promise<{
+          createWritable: () => Promise<{
+            write: (data: Blob) => Promise<void>;
+            close: () => Promise<void>;
+            abort: () => Promise<void>;
+          }>;
+        }>;
+      };
+      const handle = pickerWindow.showSaveFilePicker
+        ? await pickerWindow.showSaveFilePicker({
+            suggestedName: "rolelens-match-report.pdf",
+            types: [{ description: "PDF report", accept: { "application/pdf": [".pdf"] } }],
+          })
+        : undefined;
+      const { downloadReportPdf, buildReportPdf } = await import("../lib/report-pdf");
+      if (handle) {
+        const pdf = await buildReportPdf(result);
+        const writable = await handle.createWritable();
+        try {
+          await writable.write(pdf.output("blob"));
+          await writable.close();
+        } catch (error) {
+          await writable.abort().catch(() => {});
+          throw error;
+        }
+      } else {
+        await downloadReportPdf(result);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setExportError("The PDF could not be downloaded. Please try again.");
     } finally {
       inFlight.current = false;
@@ -44,50 +67,11 @@ export function ScoreReport({ result }: { result: MatchResult }) {
           <span className="eyebrow">YOUR MATCH REPORT</span>
           <h2>A clearer picture of your fit.</h2>
         </div>
-        <Dialog.Root open={exportOpen} onOpenChange={(open) => {
-          if (inFlight.current) return;
-          setExportError("");
-          setExportOpen(open);
-        }}>
-        <Dialog.Trigger asChild>
-        <Button className="report-export" variant="outline" disabled={exporting} aria-busy={exporting}>
+        <Button className="report-export" variant="outline" onClick={download} disabled={exporting} aria-busy={exporting}>
           <Download size={16} /> {exporting ? "Preparing PDF…" : "Export PDF"}
         </Button>
-        </Dialog.Trigger>
-        <Dialog.Portal>
-          <Dialog.Overlay className="modal-overlay" />
-          <Dialog.Content className="modal-card"
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              filenameInput.current?.focus();
-              filenameInput.current?.select();
-            }}
-            onEscapeKeyDown={(event) => { if (inFlight.current) event.preventDefault(); }}
-            onInteractOutside={(event) => { if (inFlight.current) event.preventDefault(); }}
-          >
-            <Dialog.Title>Download your report</Dialog.Title>
-            <Dialog.Description>Choose a filename for your PDF report.</Dialog.Description>
-            <form onSubmit={(event) => { event.preventDefault(); void download(); }}>
-              <label>
-                File name
-                <input ref={filenameInput} value={filename} required maxLength={120}
-                  disabled={exporting} autoComplete="off"
-                  onChange={(event) => { setFilename(event.target.value); setExportError(""); }}
-                />
-              </label>
-              <small>The .pdf extension is added automatically.</small>
-              {exportError && <p className="error" role="alert">{exportError}</p>}
-              <div className="confirm-dialog-actions">
-                <Button type="button" variant="outline" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={exporting || !filename.trim()} aria-busy={exporting}>
-                  <Download size={16} /> {exporting ? "Preparing PDF…" : "Download PDF"}
-                </Button>
-              </div>
-            </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-        </Dialog.Root>
       </div>
+      {exportError && <p className="error" role="alert">{exportError}</p>}
       {result.mode === "demo" && (
         <p className="notice">
           <FlaskConical size={17} /> Local keyword preview · No AI request was
