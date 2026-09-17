@@ -19,6 +19,20 @@ it("explains quota failures without leaking upstream data", async () => {
  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response("private upstream body",{status:429})));
  await expect(analyzeResume("resume","job")).rejects.toThrow("quota");
 });
+it("retries a transient Gemini service failure", async () => {
+ vi.useFakeTimers();
+ vi.stubEnv("GEMINI_API_KEY", "test-only");
+ const extraction = {skills:[],experience:[],education:[],keywords:[],suggestions:[],summary:"A match."};
+ const mock = vi.fn()
+  .mockResolvedValueOnce(new Response("temporarily unavailable", {status:503}))
+  .mockResolvedValueOnce(new Response(JSON.stringify({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify(extraction)}]}}]})));
+ vi.stubGlobal("fetch", mock);
+ const analysis = analyzeResume("resume", "job");
+ await vi.runAllTimersAsync();
+ await expect(analysis).resolves.toMatchObject({score: 0});
+ expect(mock).toHaveBeenCalledTimes(2);
+ vi.useRealTimers();
+});
 it("rejects truncated or malformed output", async () => {
  vi.stubEnv("GEMINI_API_KEY", "test-only");
  vi.stubGlobal("fetch",vi.fn().mockResolvedValue(new Response(JSON.stringify({candidates:[{finishReason:"MAX_TOKENS",content:{parts:[{text:"{}"}]}}]}))));
