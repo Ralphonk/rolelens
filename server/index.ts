@@ -53,7 +53,8 @@ const limit = (max: number, minutes: number) =>
     limit: max,
     standardHeaders: "draft-8",
     legacyHeaders: false,
-    keyGenerator: (req) => ipKeyGenerator(req.ip || req.socket.remoteAddress || "unknown"),
+    keyGenerator: (req) =>
+      ipKeyGenerator(req.ip || req.socket.remoteAddress || "unknown"),
     message: { error: "Too many requests. Please wait and try again." },
   });
 app.use("/api", limit(120, 15));
@@ -146,21 +147,17 @@ app.post(
       const result = await parser.getText();
       const text = result.text.trim();
       if (text.length < 50) {
-        res
-          .status(422)
-          .json({
-            error:
-              "No readable resume text found. Scanned PDFs need OCR; paste the text instead.",
-          });
+        res.status(422).json({
+          error:
+            "No readable resume text found. Scanned PDFs need OCR; paste the text instead.",
+        });
         return;
       }
       if (text.length > 20000) {
-        res
-          .status(422)
-          .json({
-            error:
-              "This PDF has too much text. Paste only the relevant resume content (up to 20,000 characters).",
-          });
+        res.status(422).json({
+          error:
+            "This PDF has too much text. Paste only the relevant resume content (up to 20,000 characters).",
+        });
         return;
       }
       res.json({
@@ -170,12 +167,10 @@ app.post(
         text,
       });
     } catch {
-      res
-        .status(422)
-        .json({
-          error:
-            "This PDF could not be read. Try an unencrypted, text-based PDF or paste the text.",
-        });
+      res.status(422).json({
+        error:
+          "This PDF could not be read. Try an unencrypted, text-based PDF or paste the text.",
+      });
     } finally {
       await parser.destroy();
     }
@@ -217,6 +212,31 @@ app.get("/api/analyses", requireUser, async (req: AuthedRequest, res) => {
   });
   res.json(rows.map(({ job, ...a }) => ({ ...a, ...job })));
 });
+app.delete(
+  "/api/analyses/:id",
+  requireUser,
+  async (req: AuthedRequest, res) => {
+    const analysis = await db().analysis.findFirst({
+      where: { id: String(req.params.id), userId: req.userId },
+      select: { id: true, jobId: true },
+    });
+    if (!analysis) {
+      res.status(404).json({ error: "Match report not found." });
+      return;
+    }
+    await db().$transaction(async (tx) => {
+      await tx.analysis.delete({ where: { id: analysis.id } });
+      await tx.job.deleteMany({
+        where: {
+          id: analysis.jobId,
+          userId: req.userId,
+          analyses: { none: {} },
+        },
+      });
+    });
+    res.json({ ok: true });
+  },
+);
 app.post(
   "/api/analyses",
   requireUser,
@@ -264,11 +284,9 @@ app.use(
     _next: express.NextFunction,
   ) => {
     if (error instanceof ZodError) {
-      res
-        .status(400)
-        .json({
-          error: error.issues[0]?.message || "Please check your inputs.",
-        });
+      res.status(400).json({
+        error: error.issues[0]?.message || "Please check your inputs.",
+      });
       return;
     }
     if (error instanceof multer.MulterError) {
@@ -285,12 +303,10 @@ app.use(
       return;
     }
     console.error("Request failed", e.code || "internal_error");
-    res
-      .status(503)
-      .json({
-        error:
-          "Service unavailable. Check the server configuration and try again.",
-      });
+    res.status(503).json({
+      error:
+        "Service unavailable. Check the server configuration and try again.",
+    });
   },
 );
 const port = Number(process.env.API_PORT || 4002);
