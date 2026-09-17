@@ -48,6 +48,9 @@ export async function analyzeResume(resume: string, description: string) {
     throw failure("Gemini could not be reached or timed out. Please try again.", 503);
   }
   if (!response.ok) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("Gemini request failed", { status: response.status, model });
+    }
     if (response.status === 429) throw failure("Gemini quota or rate limit reached. Wait and retry, or check your Google AI Studio quota.", 503);
     if ([400,401,403].includes(response.status)) throw failure("Gemini rejected the request. Check the server API key, model access and project configuration.", 503);
     if (response.status === 404) throw failure("Gemini model not available. Check GEMINI_MODEL on the server.", 503);

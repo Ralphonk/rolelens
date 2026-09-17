@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import { PDFParse } from "pdf-parse";
@@ -25,6 +25,10 @@ import { analyzeResume } from "./ai.js";
 import { passwordResetRouter } from "./password-reset.js";
 const app = express();
 app.disable("x-powered-by");
+// Render terminates public connections at its edge and forwards the client IP.
+// Trust that proxy chain so security middleware does not treat every visitor as
+// the same Render host or reject the forwarded headers.
+if (process.env.NODE_ENV === "production") app.set("trust proxy", true);
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json({ limit: "100kb" }));
@@ -49,6 +53,7 @@ const limit = (max: number, minutes: number) =>
     limit: max,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(req.ip || req.socket.remoteAddress || "unknown"),
     message: { error: "Too many requests. Please wait and try again." },
   });
 app.use("/api", limit(120, 15));

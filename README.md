@@ -141,4 +141,4 @@ The current API reads `API_PORT`; set it to the same value as Render's `PORT`. `
 - Run `npm run db:migrate` once as a release step.
 - Dockerfile runs both servers; Docker Compose currently provides only the development database.
 
-Before a public production launch: configure a trusted proxy/IP strategy and shared rate-limit store, add per-account AI quotas and cost monitoring, isolate PDF parsing with process/memory/time limits, add email verification/recovery, automate data retention/deletion, and complete database-backed security tests. Current in-memory rate limits are per process and intentionally do not trust client-supplied forwarding headers.
+Before a public production launch: configure a shared rate-limit store, add per-account AI quotas and cost monitoring, isolate PDF parsing with process/memory/time limits, add email verification/recovery, automate data retention/deletion, and complete database-backed security tests. Production trusts the hosting proxy chain and uses the forwarded client IP; the current in-memory rate limits remain per process.
