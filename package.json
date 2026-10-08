@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm run dev:web\" \"npm run dev:api\"",
     "dev:web": "next dev --hostname 127.0.0.1 -p 3002",
-    "dev:api": "tsc -p server/tsconfig.json && concurrently -k \"tsc -p server/tsconfig.json --watch\" \"node --watch dist/server/index.js\"",
+    "dev:api": "prisma generate && tsc -p server/tsconfig.json && concurrently -k \"tsc -p server/tsconfig.json --watch\" \"node --watch dist/server/index.js\"",
     "build": "prisma generate && next build && tsc -p server/tsconfig.json",
     "start": "concurrently -k \"next start -p 3002\" \"node dist/server/index.js\"",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json --noEmit",

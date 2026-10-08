@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  turbopack: {
+    root: import.meta.dirname,
+  },
   async rewrites() {
     return [
       {
