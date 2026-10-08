@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ScanLine,
   Sparkles,
@@ -41,26 +43,52 @@ const views = [
   { name: "Match history", shortName: "History", icon: History },
   { name: "Insights", shortName: "Insights", icon: ChartNoAxesCombined },
 ];
+const WORKSPACE_CACHE_TTL = 60_000;
+const viewRoutes: Record<string, string> = {
+  "New match": "/",
+  "My resumes": "/resumes",
+  "Match history": "/history",
+  Insights: "/insights",
+};
+function viewForPath(pathname: string) {
+  if (pathname === "/resumes") return "My resumes";
+  if (pathname.startsWith("/resumes/")) return "Resume";
+  if (pathname === "/history") return "Match history";
+  if (pathname === "/insights") return "Insights";
+  if (pathname.startsWith("/reports/")) return "Report";
+  return "New match";
+}
 export function MatcherWorkspace() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const view = viewForPath(pathname);
+  const reportId = pathname.startsWith("/reports/")
+    ? decodeURIComponent(pathname.slice("/reports/".length))
+    : null;
+  const resumeIdFromPath = pathname.startsWith("/resumes/")
+    ? decodeURIComponent(pathname.slice("/resumes/".length))
+    : null;
   const [initialLoading, setInitialLoading] = useState(true);
   const [pendingRefreshes, setPendingRefreshes] = useState(0);
+  const [workspaceCacheLoaded, setWorkspaceCacheLoaded] = useState(false);
   const [successToast, setSuccessToast] = useState<{
     message: string;
     id: number;
   } | null>(null);
   const dismissToast = useCallback(() => setSuccessToast(null), []);
-  const [view, setView] = useState("New match"),
-    [user, setUser] = useState<User | null>(null),
+  const [user, setUser] = useState<User | null>(null),
     [authOpen, setAuthOpen] = useState(false),
     [resumes, setResumes] = useState<Resume[]>([]),
     [analyses, setAnalyses] = useState<Analysis[]>([]),
     [resume, setResume] = useState(""),
+    [resumeFile, setResumeFile] = useState<File | null>(null),
     [resumeName, setResumeName] = useState(""),
     [resumeId, setResumeId] = useState<string | undefined>(),
     [job, setJob] = useState(""),
     [title, setTitle] = useState(""),
     [company, setCompany] = useState(""),
     [result, setResult] = useState<MatchResult | null>(null),
+    [historyReport, setHistoryReport] = useState<Analysis | null>(null),
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -69,7 +97,10 @@ export function MatcherWorkspace() {
     [query, setQuery] = useState(""),
     [drag, setDrag] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null),
-    reportRef = useRef<HTMLDivElement>(null);
+    reportRef = useRef<HTMLDivElement>(null),
+    workspaceCacheUpdatedAt = useRef(0),
+    expiredSessionHandled = useRef(false);
+  const selectedResume = resumes.find((item) => item.id === resumeIdFromPath);
   useEffect(() => {
     api<User>("/auth/me")
       .then((u) => {
@@ -79,6 +110,47 @@ export function MatcherWorkspace() {
       })
       .catch(() => setInitialLoading(false));
   }, []);
+  useEffect(() => {
+    if (!reportId) {
+      setHistoryReport(null);
+      return;
+    }
+    const report = analyses.find((item) => item.id === reportId);
+    if (report) setHistoryReport(report);
+  }, [analyses, reportId]);
+  useEffect(() => {
+    function handleExpiredSession() {
+      if (expiredSessionHandled.current) return;
+      expiredSessionHandled.current = true;
+      setUser(null);
+      setResumes([]);
+      setAnalyses([]);
+      setWorkspaceCacheLoaded(false);
+      workspaceCacheUpdatedAt.current = 0;
+      setResume("");
+      setResumeFile(null);
+      setResumeName("");
+      setResumeId(undefined);
+      setJob("");
+      setTitle("");
+      setCompany("");
+      setResult(null);
+      setHistoryReport(null);
+      setMode("demo");
+      setConsent(false);
+      setAuthOpen(false);
+      setError("");
+      setNotice("");
+      setSuccessToast(null);
+      router.replace("/");
+    }
+    window.addEventListener("rolelens:session-expired", handleExpiredSession);
+    return () =>
+      window.removeEventListener(
+        "rolelens:session-expired",
+        handleExpiredSession,
+      );
+  }, [router]);
   async function refresh() {
     setPendingRefreshes((count) => count + 1);
     try {
@@ -88,14 +160,25 @@ export function MatcherWorkspace() {
       ]);
       setResumes(r);
       setAnalyses(a);
+      workspaceCacheUpdatedAt.current = Date.now();
+      setWorkspaceCacheLoaded(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setPendingRefreshes((count) => count - 1);
     }
   }
+  function refreshWorkspaceIfStale() {
+    if (
+      !workspaceCacheLoaded ||
+      Date.now() - workspaceCacheUpdatedAt.current >= WORKSPACE_CACHE_TTL
+    ) {
+      void refresh();
+    }
+  }
   function sample() {
     setResume(sampleResume);
+    setResumeFile(null);
     setResumeName("Aarav_Sharma_Frontend.pdf");
     setResumeId(undefined);
     setJob(sampleJob);
@@ -107,12 +190,12 @@ export function MatcherWorkspace() {
   }
   function navigate(next: string) {
     if (next === view) return;
-    setView(next);
+    router.push(viewRoutes[next] || "/");
     setError("");
     setNotice("");
     setQuery("");
     if (user && ["My resumes", "Match history", "Insights"].includes(next)) {
-      void refresh();
+      refreshWorkspaceIfStale();
     }
   }
   async function upload(file?: File) {
@@ -131,6 +214,7 @@ export function MatcherWorkspace() {
         body: form,
       });
       setResume(r.text);
+      setResumeFile(file);
       setResumeName(r.name);
       setResumeId(undefined);
       setResult(null);
@@ -193,9 +277,13 @@ export function MatcherWorkspace() {
     setBusy("save");
     setError("");
     try {
+      const form = new FormData();
+      form.append("name", resumeName || "My resume");
+      form.append("text", resume);
+      if (resumeFile) form.append("file", resumeFile, resumeFile.name);
       const r = await api<Resume>("/resumes", {
         method: "POST",
-        body: JSON.stringify({ name: resumeName || "My resume", text: resume }),
+        body: form,
       });
       setResumeId(r.id);
       await refresh();
@@ -224,12 +312,16 @@ export function MatcherWorkspace() {
             setUser(null);
             setResumes([]);
             setAnalyses([]);
+            setWorkspaceCacheLoaded(false);
+            workspaceCacheUpdatedAt.current = 0;
             setResume("");
+            setResumeFile(null);
             setJob("");
             setResult(null);
+            setHistoryReport(null);
             setResumeId(undefined);
             setMode("demo");
-            setView("New match");
+            router.replace("/");
             setNotice("");
             setError("");
             setSuccessToast({
@@ -265,7 +357,13 @@ export function MatcherWorkspace() {
             {views.map(({ name, shortName, icon: Icon }) => (
               <button
                 key={name}
-                className={view === name ? "nav-active" : ""}
+                className={
+                  view === name ||
+                  (view === "Report" && name === "Match history") ||
+                  (view === "Resume" && name === "My resumes")
+                    ? "nav-active"
+                    : ""
+                }
                 onClick={() => navigate(name)}
               >
                 <Icon size={19} />
@@ -315,7 +413,25 @@ export function MatcherWorkspace() {
             <div>
               <span>Workspace</span>
               <ChevronRight size={14} />
-              <b>{view}</b>
+              {view === "Report" ? (
+                <>
+                  <Link className="breadcrumb-link" href="/history">
+                    Matching reports
+                  </Link>
+                  <ChevronRight size={14} />
+                  <b>{historyReport?.title || "Report"}</b>
+                </>
+              ) : view === "Resume" ? (
+                <>
+                  <Link className="breadcrumb-link" href="/resumes">
+                    My resumes
+                  </Link>
+                  <ChevronRight size={14} />
+                  <b>{selectedResume?.name || "Resume"}</b>
+                </>
+              ) : (
+                <b>{view}</b>
+              )}
             </div>
           </header>
         </div>
@@ -324,12 +440,12 @@ export function MatcherWorkspace() {
           aria-busy={
             view !== "New match" &&
             view !== "Report" &&
-            (initialLoading || pendingRefreshes > 0)
+            (initialLoading || (pendingRefreshes > 0 && !workspaceCacheLoaded))
           }
         >
           {view !== "New match" &&
           view !== "Report" &&
-          (initialLoading || pendingRefreshes > 0) ? (
+          (initialLoading || (pendingRefreshes > 0 && !workspaceCacheLoaded)) ? (
             <WorkspaceSkeleton view={view} />
           ) : (
             <div key={view} className="workspace-page-enter">
@@ -347,6 +463,10 @@ export function MatcherWorkspace() {
                         <br className="desktop-break" /> a clearer{" "}
                         <em>match.</em>
                       </>
+                    ) : view === "Report" && historyReport ? (
+                      `${historyReport.title} at ${historyReport.company}`
+                    ) : view === "Resume" && selectedResume ? (
+                      selectedResume.name
                     ) : (
                       view
                     )}
@@ -354,16 +474,33 @@ export function MatcherWorkspace() {
                   <p>
                     {view === "New match"
                       ? "See where you fit, find the gaps, and make your next application count."
-                      : view === "My resumes"
-                        ? "Keep the right version ready for every opportunity."
-                        : view === "Match history"
-                          ? "Every role you explored, with the details that matter."
-                          : "Patterns from your saved AI match reports."}
+                      : view === "Report"
+                        ? "A saved report from your match history."
+                        : view === "Resume" && selectedResume
+                          ? `Saved ${new Date(selectedResume.createdAt).toLocaleDateString()}`
+                        : view === "My resumes"
+                          ? "Keep the right version ready for every opportunity."
+                          : view === "Match history"
+                            ? "Every role you explored, with the details that matter."
+                            : "Patterns from your saved AI match reports."}
                   </p>
                 </div>
                 {view === "New match" ? (
                   <Button variant="outline" onClick={sample} disabled={!!busy}>
                     <Sparkles size={16} /> Try a sample
+                  </Button>
+                ) : view === "Resume" && selectedResume ? (
+                  <Button
+                    onClick={() => {
+                      setResume(selectedResume.text);
+                      setResumeFile(null);
+                      setResumeName(selectedResume.name);
+                      setResumeId(selectedResume.id);
+                      setResult(null);
+                      navigate("New match");
+                    }}
+                  >
+                    Use this resume <ArrowUpRight size={16} />
                   </Button>
                 ) : (
                   <Button onClick={() => navigate("New match")}>
@@ -697,16 +834,31 @@ export function MatcherWorkspace() {
                       {resumes.map((r) => (
                         <article className="card resume-library" key={r.id}>
                           <FileText size={28} />
-                          <h2>{r.name}</h2>
+                          <h2>
+                            <Link
+                              className="resume-name-link"
+                              href={`/resumes/${encodeURIComponent(r.id)}`}
+                            >
+                              {r.name}
+                            </Link>
+                          </h2>
                           <small>
-                            Added {new Date(r.createdAt).toLocaleDateString()}
+                            Added {new Date(r.createdAt).toLocaleDateString()} ·{" "}
+                            {r.hasPdf ? "PDF saved" : "Text only"}
                           </small>
                           <p>{r.text.slice(0, 140)}…</p>
                           <div className="row-actions">
+                            <Link
+                              className="button button-ghost resume-view-button"
+                              href={`/resumes/${encodeURIComponent(r.id)}`}
+                            >
+                              View resume <ArrowUpRight size={15} />
+                            </Link>
                             <Button
                               variant="outline"
                               onClick={() => {
                                 setResume(r.text);
+                                setResumeFile(null);
                                 setResumeName(r.name);
                                 setResumeId(r.id);
                                 setResult(null);
@@ -755,6 +907,56 @@ export function MatcherWorkspace() {
                   )}
                 </>
               )}
+              {view === "Resume" && (
+                selectedResume ? (
+                  <article className="card resume-detail">
+                    <div className="resume-document-heading">
+                      <div>
+                        <span className="eyebrow">RESUME CONTENT</span>
+                        <h2>Full resume</h2>
+                      </div>
+                      <small>
+                        Added {new Date(selectedResume.createdAt).toLocaleDateString()}
+                      </small>
+                    </div>
+                    {selectedResume.hasPdf ? (
+                      <iframe
+                        className="resume-pdf-viewer"
+                        src={`/api/resumes/${encodeURIComponent(selectedResume.id)}/pdf`}
+                        title={`PDF preview of ${selectedResume.name}`}
+                      />
+                    ) : (
+                      <>
+                        <div className="notice resume-pdf-unavailable">
+                          The original PDF was not stored with this resume. This
+                          saved version contains extracted text only. Upload and
+                          save the PDF again to keep a viewable copy.
+                        </div>
+                        <pre className="resume-document-text">
+                          {selectedResume.text}
+                        </pre>
+                      </>
+                    )}
+                  </article>
+                ) : (
+                  <Empty
+                    title={
+                      user
+                        ? "Resume not found."
+                        : "Sign in to view this resume."
+                    }
+                    text={
+                      user
+                        ? "This saved resume may have been deleted."
+                        : "Your saved resumes are available after you sign in."
+                    }
+                    action={() =>
+                      user ? navigate("My resumes") : setAuthOpen(true)
+                    }
+                    label={user ? "Back to my resumes" : "Sign in"}
+                  />
+                )
+              )}
               {view === "Match history" && (
                 <>
                   {!user ? (
@@ -793,8 +995,10 @@ export function MatcherWorkspace() {
                               <button
                                 className="history-open"
                                 onClick={() => {
-                                  setResult(a.result);
-                                  setView("Report");
+                                  setHistoryReport(a);
+                                  router.push(
+                                    `/reports/${encodeURIComponent(a.id)}`,
+                                  );
                                 }}
                               >
                                 <span className="company-avatar">
@@ -864,7 +1068,9 @@ export function MatcherWorkspace() {
                   onStart={() => navigate("New match")}
                 />
               )}
-              {view === "Report" && result && <ScoreReport result={result} />}
+              {view === "Report" && historyReport && (
+                <ScoreReport result={historyReport.result} />
+              )}
             </div>
           )}
           <footer>
@@ -890,6 +1096,7 @@ export function MatcherWorkspace() {
         open={authOpen}
         onOpenChange={setAuthOpen}
         onSuccess={(u, registered) => {
+          expiredSessionHandled.current = false;
           setUser(u);
           refresh();
           setNotice("");

@@ -6,6 +6,10 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import { PDFParse } from "pdf-parse";
+import { del, get, put } from "@vercel/blob";
+import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { ZodError } from "zod";
 import { db } from "./db.js";
 import {
@@ -64,6 +68,7 @@ app.get("/api/health", (_req, res) =>
     ok: true,
     databaseConfigured: !!process.env.DATABASE_URL,
     aiConfigured: !!process.env.GEMINI_API_KEY?.trim(),
+    resumeStorageConfigured: !!process.env.BLOB_READ_WRITE_TOKEN?.trim(),
   }),
 );
 app.post("/api/auth/register", limit(5, 15), async (req, res) => {
@@ -130,7 +135,12 @@ app.post("/api/auth/logout", requireUser, async (req: AuthedRequest, res) => {
 });
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fieldSize: 100 * 1024,
+    fields: 2,
+  },
 });
 app.post(
   "/api/parse",
@@ -182,24 +192,134 @@ app.get("/api/resumes", requireUser, async (req: AuthedRequest, res) =>
       where: { userId: req.userId },
       orderBy: { createdAt: "desc" },
       take: 100,
+      select: {
+        id: true,
+        name: true,
+        text: true,
+        createdAt: true,
+        hasPdf: true,
+      },
     }),
   ),
 );
-app.post("/api/resumes", requireUser, async (req: AuthedRequest, res) => {
-  const input = resumeSchema.parse(req.body);
-  res
-    .status(201)
-    .json(
-      await db().resume.create({ data: { ...input, userId: req.userId! } }),
-    );
-});
+app.get(
+  "/api/resumes/:id/pdf",
+  requireUser,
+  async (req: AuthedRequest, res) => {
+    const resume = await db().resume.findFirst({
+      where: { id: String(req.params.id), userId: req.userId },
+      select: { name: true, blobPathname: true, pdfBytes: true },
+    });
+    if (!resume || (!resume.blobPathname && !resume.pdfBytes)) {
+      res.status(404).json({ error: "Original PDF is not available." });
+      return;
+    }
+    const filename =
+      resume.name.replace(/[^a-zA-Z0-9._ -]/g, "_").slice(0, 180) ||
+      "resume.pdf";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    if (resume.blobPathname) {
+      const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+      if (!token) {
+        res.status(503).json({ error: "Resume storage is not configured." });
+        return;
+      }
+      const blob = await get(resume.blobPathname, {
+        access: "private",
+        token,
+      });
+      if (!blob || blob.statusCode !== 200) {
+        res.status(404).json({ error: "Original PDF is not available." });
+        return;
+      }
+      res.setHeader("Content-Type", "application/pdf");
+      await pipeline(
+        Readable.fromWeb(
+          blob.stream as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+        ),
+        res,
+      );
+      return;
+    }
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(Buffer.from(resume.pdfBytes!));
+  },
+);
+app.post(
+  "/api/resumes",
+  requireUser,
+  upload.single("file"),
+  async (req: AuthedRequest, res) => {
+    const file = req.file;
+    if (file && file.buffer.subarray(0, 5).toString() !== "%PDF-") {
+      res.status(400).json({ error: "Please upload a valid PDF file." });
+      return;
+    }
+    const input = resumeSchema.parse(req.body);
+    const id = file ? randomUUID() : undefined;
+    const token = file ? process.env.BLOB_READ_WRITE_TOKEN?.trim() : undefined;
+    if (file && !token) {
+      res.status(503).json({ error: "Resume storage is not configured." });
+      return;
+    }
+    const blob = file
+      ? await put(`resumes/${req.userId}/${id}.pdf`, file.buffer, {
+          access: "private",
+          token: token!,
+          contentType: "application/pdf",
+          addRandomSuffix: false,
+        })
+      : undefined;
+    let resume;
+    try {
+      resume = await db().resume.create({
+        data: {
+          ...input,
+          ...(id ? { id } : {}),
+          userId: req.userId!,
+          ...(blob ? { blobPathname: blob.pathname, hasPdf: true } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          text: true,
+          createdAt: true,
+          hasPdf: true,
+        },
+      });
+    } catch (error) {
+      if (blob && token) await del(blob.pathname, { token }).catch(() => undefined);
+      throw error;
+    }
+    res.status(201).json(resume);
+  },
+);
 app.delete("/api/resumes/:id", requireUser, async (req: AuthedRequest, res) => {
-  const result = await db().resume.deleteMany({
+  const resume = await db().resume.findFirst({
     where: { id: String(req.params.id), userId: req.userId },
+    select: { id: true, blobPathname: true },
+  });
+  if (!resume) {
+    res.status(404).json({ error: "Resume not found." });
+    return;
+  }
+  const result = await db().resume.deleteMany({
+    where: { id: resume.id, userId: req.userId },
   });
   if (!result.count) {
     res.status(404).json({ error: "Resume not found." });
     return;
+  }
+  if (resume.blobPathname) {
+    const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    if (token) {
+      await del(resume.blobPathname, { token }).catch(() => {
+        console.error("Unable to remove a deleted resume from Blob storage.");
+      });
+    }
   }
   res.json({ ok: true });
 });

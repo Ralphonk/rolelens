@@ -40,6 +40,9 @@ model Resume {
  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
  name String
  text String
+ blobPathname String?
+ pdfBytes Bytes?
+ hasPdf Boolean @default(false)
  createdAt DateTime @default(now())
  analyses Analysis[]
  @@index([userId, createdAt])

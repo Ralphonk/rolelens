@@ -73,12 +73,22 @@ Demo mode checks a limited vocabulary only; it never silently substitutes for fa
 
 ## Data handling
 
-PDFs are processed in memory, limited to 5 MB, and not retained as files. Only text-based PDFs are supported; no OCR.
+PDFs are limited to 5 MB and text is extracted in memory. Original PDFs are stored in a private Vercel Blob store; Neon stores the private Blob pathname and resume text. The Express API checks resume ownership before streaming a PDF, so Blob URLs and storage credentials are never exposed to the browser. Existing PDFs in the database remain readable while they are copied to Blob storage. Only text-based PDFs are supported; no OCR.
 Text is stored only on Save resume. Job descriptions and result evidence are stored when an authenticated user explicitly runs AI analysis.
 AI analysis requires a consent checkbox before sending text to Gemini. Free-tier inputs may be used to improve Google products. Use sample or anonymized resumes, not sensitive personal data. Review Google's API terms before enabling real-user uploads.
 Ownership is checked on every private record operation. JWTs are not kept in localStorage. Passwords are bcrypt-hashed.
 No API keys, credentials or complete resume text are logged.
-Password recovery uses emailed six-digit codes (10-minute expiry, five attempts, 60-second resend cooldown), a short-lived single-use reset token, and revokes existing sessions after a password change. It does not include signup email verification or original-PDF downloads.
+Password recovery uses emailed six-digit codes (10-minute expiry, five attempts, 60-second resend cooldown), a short-lived single-use reset token, and revokes existing sessions after a password change.
+
+### Vercel Blob for resume PDFs
+
+1. In the Vercel project, open **Storage → Create Database → Blob**, choose **Private**, and connect the store to the frontend project.
+2. Copy its `BLOB_READ_WRITE_TOKEN` into the backend's local `.env` and the Render service's environment variables. Keep it server-side: do not add a `NEXT_PUBLIC_` prefix or put it in the frontend.
+3. Apply the additive database migration with `npm run db:migrate` before deploying the backend that uses `blobPathname`.
+4. Deploy the updated Render API. New PDF uploads then go to private Blob storage; resumes without an original PDF continue to save normally.
+5. To copy previously saved database PDFs, run `npm run db:migrate:resume-blobs` once with the production `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` configured. The script is safe to rerun. It keeps the old database bytes as a fallback; remove them only after confirming all files migrated and can be opened.
+
+The API is hosted on Render, not as a Vercel Function, so configure the Blob token on Render as well as locally. Private Blob reads are streamed through the authenticated API; don't make resume files public.
 
 ### Password reset email
 
@@ -129,6 +139,7 @@ API_PORT=10000
 APP_ORIGIN=https://rolelens-resume.vercel.app
 DATABASE_URL=YOUR_NEON_CONNECTION_STRING
 JWT_SECRET=YOUR_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
+BLOB_READ_WRITE_TOKEN=YOUR_PRIVATE_BLOB_READ_WRITE_TOKEN
 GEMINI_API_KEY=YOUR_GEMINI_KEY
 GEMINI_MODEL=gemini-3.1-flash-lite
 ```
