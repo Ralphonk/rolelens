@@ -4,7 +4,7 @@ export type Resume = {
   name: string;
   text: string;
   createdAt: string;
-  hasPdf: boolean;
+  pdfAvailable: boolean;
 };
 export type Analysis = {
   id: string;

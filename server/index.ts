@@ -69,6 +69,7 @@ app.get("/api/health", (_req, res) =>
     databaseConfigured: !!process.env.DATABASE_URL,
     aiConfigured: !!process.env.GEMINI_API_KEY?.trim(),
     resumeStorageConfigured: !!process.env.BLOB_READ_WRITE_TOKEN?.trim(),
+    resumeStorageMode: "blob",
   }),
 );
 app.post("/api/auth/register", limit(5, 15), async (req, res) => {
@@ -186,31 +187,35 @@ app.post(
     }
   },
 );
-app.get("/api/resumes", requireUser, async (req: AuthedRequest, res) =>
+app.get("/api/resumes", requireUser, async (req: AuthedRequest, res) => {
+  const resumes = await db().resume.findMany({
+    where: { userId: req.userId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      name: true,
+      text: true,
+      createdAt: true,
+      blobPathname: true,
+    },
+  });
   res.json(
-    await db().resume.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        name: true,
-        text: true,
-        createdAt: true,
-        hasPdf: true,
-      },
-    }),
-  ),
-);
+    resumes.map(({ blobPathname, ...resume }) => ({
+      ...resume,
+      pdfAvailable: !!blobPathname,
+    })),
+  );
+});
 app.get(
   "/api/resumes/:id/pdf",
   requireUser,
   async (req: AuthedRequest, res) => {
     const resume = await db().resume.findFirst({
       where: { id: String(req.params.id), userId: req.userId },
-      select: { name: true, blobPathname: true, pdfBytes: true },
+      select: { name: true, blobPathname: true },
     });
-    if (!resume || (!resume.blobPathname && !resume.pdfBytes)) {
+    if (!resume?.blobPathname) {
       res.status(404).json({ error: "Original PDF is not available." });
       return;
     }
@@ -221,31 +226,25 @@ app.get(
     res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
-    if (resume.blobPathname) {
-      const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
-      if (!token) {
-        res.status(503).json({ error: "Resume storage is not configured." });
-        return;
-      }
-      const blob = await get(resume.blobPathname, {
-        access: "private",
-        token,
-      });
-      if (!blob || blob.statusCode !== 200) {
-        res.status(404).json({ error: "Original PDF is not available." });
-        return;
-      }
-      res.setHeader("Content-Type", "application/pdf");
-      await pipeline(
-        Readable.fromWeb(
-          blob.stream as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
-        ),
-        res,
-      );
+    const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    if (!token) {
+      res.status(503).json({ error: "Resume storage is not configured." });
       return;
     }
-    res.setHeader("Content-Type", "application/pdf");
-    res.send(Buffer.from(resume.pdfBytes!));
+    const blob = await get(resume.blobPathname, {
+      access: "private",
+      token,
+    });
+    if (!blob || blob.statusCode !== 200) {
+      res.status(404).json({ error: "Original PDF is not available." });
+      return;
+    }
+    await pipeline(
+      Readable.fromWeb(
+        blob.stream as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+      ),
+      res,
+    );
   },
 );
 app.post(
@@ -280,21 +279,22 @@ app.post(
           ...input,
           ...(id ? { id } : {}),
           userId: req.userId!,
-          ...(blob ? { blobPathname: blob.pathname, hasPdf: true } : {}),
+          ...(blob ? { blobPathname: blob.pathname } : {}),
         },
         select: {
           id: true,
           name: true,
           text: true,
           createdAt: true,
-          hasPdf: true,
+          blobPathname: true,
         },
       });
     } catch (error) {
       if (blob && token) await del(blob.pathname, { token }).catch(() => undefined);
       throw error;
     }
-    res.status(201).json(resume);
+    const { blobPathname, ...publicResume } = resume;
+    res.status(201).json({ ...publicResume, pdfAvailable: !!blobPathname });
   },
 );
 app.delete("/api/resumes/:id", requireUser, async (req: AuthedRequest, res) => {

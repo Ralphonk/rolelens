@@ -844,7 +844,7 @@ export function MatcherWorkspace() {
                           </h2>
                           <small>
                             Added {new Date(r.createdAt).toLocaleDateString()} ·{" "}
-                            {r.hasPdf ? "PDF saved" : "Text only"}
+                            {r.pdfAvailable ? "PDF saved" : "Text only"}
                           </small>
                           <p>{r.text.slice(0, 140)}…</p>
                           <div className="row-actions">
@@ -919,7 +919,7 @@ export function MatcherWorkspace() {
                         Added {new Date(selectedResume.createdAt).toLocaleDateString()}
                       </small>
                     </div>
-                    {selectedResume.hasPdf ? (
+                    {selectedResume.pdfAvailable ? (
                       <iframe
                         className="resume-pdf-viewer"
                         src={`/api/resumes/${encodeURIComponent(selectedResume.id)}/pdf`}
