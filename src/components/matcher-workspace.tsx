@@ -19,7 +19,6 @@ import {
   LoaderCircle,
   CircleHelp,
   Search,
-  X,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { AuthDialog } from "./auth-dialog";
@@ -74,8 +73,13 @@ export function MatcherWorkspace() {
   const [successToast, setSuccessToast] = useState<{
     message: string;
     id: number;
+    variant?: "success" | "error";
   } | null>(null);
   const dismissToast = useCallback(() => setSuccessToast(null), []);
+  const showToast = (
+    message: string,
+    variant: "success" | "error" = "success",
+  ) => setSuccessToast({ message, variant, id: Date.now() + Math.random() });
   const [user, setUser] = useState<User | null>(null),
     [authOpen, setAuthOpen] = useState(false),
     [resumes, setResumes] = useState<Resume[]>([]),
@@ -90,8 +94,6 @@ export function MatcherWorkspace() {
     [result, setResult] = useState<MatchResult | null>(null),
     [historyReport, setHistoryReport] = useState<Analysis | null>(null),
     [busy, setBusy] = useState(""),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
     [mode, setMode] = useState<"demo" | "ai">("demo"),
     [consent, setConsent] = useState(false),
     [query, setQuery] = useState(""),
@@ -139,8 +141,7 @@ export function MatcherWorkspace() {
       setMode("demo");
       setConsent(false);
       setAuthOpen(false);
-      setError("");
-      setNotice("");
+
       setSuccessToast(null);
       router.replace("/");
     }
@@ -163,7 +164,7 @@ export function MatcherWorkspace() {
       workspaceCacheUpdatedAt.current = Date.now();
       setWorkspaceCacheLoaded(true);
     } catch (e) {
-      setError((e as Error).message);
+      showToast((e as Error).message, "error");
     } finally {
       setPendingRefreshes((count) => count - 1);
     }
@@ -185,14 +186,13 @@ export function MatcherWorkspace() {
     setTitle("Frontend Engineer");
     setCompany("Linear");
     setResult(null);
-    setError("");
-    setNotice("Sample loaded. Edit either text, then run a local preview.");
+
+    showToast("Sample loaded. Edit either text, then run a local preview.");
   }
   function navigate(next: string) {
     if (next === view) return;
     router.push(viewRoutes[next] || "/");
-    setError("");
-    setNotice("");
+
     setQuery("");
     if (user && ["My resumes", "Match history", "Insights"].includes(next)) {
       refreshWorkspaceIfStale();
@@ -201,11 +201,11 @@ export function MatcherWorkspace() {
   async function upload(file?: File) {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setError("Please choose a PDF under 5 MB.");
+      showToast("Please choose a PDF under 5 MB.", "error");
       return;
     }
     setBusy("upload");
-    setError("");
+
     try {
       const form = new FormData();
       form.append("file", file);
@@ -218,9 +218,9 @@ export function MatcherWorkspace() {
       setResumeName(r.name);
       setResumeId(undefined);
       setResult(null);
-      setNotice("Text extracted. Please review it before analyzing.");
+      showToast("Text extracted. Please review it before analyzing.");
     } catch (e) {
-      setError((e as Error).message);
+      showToast((e as Error).message, "error");
     } finally {
       setBusy("");
       if (fileInput.current) fileInput.current.value = "";
@@ -228,8 +228,7 @@ export function MatcherWorkspace() {
   }
   async function analyze() {
     setBusy("analysis");
-    setError("");
-    setNotice("");
+
     try {
       let report: MatchResult;
       if (mode === "demo") {
@@ -255,6 +254,7 @@ export function MatcherWorkspace() {
         await refresh();
       }
       setResult(report);
+      showToast(mode === "demo" ? "Local match ready." : "Match report saved.");
       setTimeout(
         () =>
           reportRef.current?.scrollIntoView({
@@ -264,7 +264,7 @@ export function MatcherWorkspace() {
         50,
       );
     } catch (e) {
-      setError((e as Error).message);
+      showToast((e as Error).message, "error");
     } finally {
       setBusy("");
     }
@@ -275,7 +275,7 @@ export function MatcherWorkspace() {
       return;
     }
     setBusy("save");
-    setError("");
+
     try {
       const form = new FormData();
       form.append("name", resumeName || "My resume");
@@ -287,9 +287,9 @@ export function MatcherWorkspace() {
       });
       setResumeId(r.id);
       await refresh();
-      setNotice("Resume saved to your workspace.");
+      showToast("Resume saved to your workspace.");
     } catch (e) {
-      setError((e as Error).message);
+      showToast((e as Error).message, "error");
     } finally {
       setBusy("");
     }
@@ -322,8 +322,7 @@ export function MatcherWorkspace() {
             setResumeId(undefined);
             setMode("demo");
             router.replace("/");
-            setNotice("");
-            setError("");
+
             setSuccessToast({
               message: "Successfully logged out.",
               id: Date.now(),
@@ -445,7 +444,8 @@ export function MatcherWorkspace() {
         >
           {view !== "New match" &&
           view !== "Report" &&
-          (initialLoading || (pendingRefreshes > 0 && !workspaceCacheLoaded)) ? (
+          (initialLoading ||
+            (pendingRefreshes > 0 && !workspaceCacheLoaded)) ? (
             <WorkspaceSkeleton view={view} />
           ) : (
             <div key={view} className="workspace-page-enter">
@@ -478,11 +478,11 @@ export function MatcherWorkspace() {
                         ? "A saved report from your match history."
                         : view === "Resume" && selectedResume
                           ? `Saved ${new Date(selectedResume.createdAt).toLocaleDateString()}`
-                        : view === "My resumes"
-                          ? "Keep the right version ready for every opportunity."
-                          : view === "Match history"
-                            ? "Every role you explored, with the details that matter."
-                            : "Patterns from your saved AI match reports."}
+                          : view === "My resumes"
+                            ? "Keep the right version ready for every opportunity."
+                            : view === "Match history"
+                              ? "Every role you explored, with the details that matter."
+                              : "Patterns from your saved AI match reports."}
                   </p>
                 </div>
                 {view === "New match" ? (
@@ -508,24 +508,6 @@ export function MatcherWorkspace() {
                   </Button>
                 )}
               </div>
-              {error && (
-                <div className="error" role="alert">
-                  {error}
-                  <button
-                    className="icon-button"
-                    aria-label="Dismiss error"
-                    onClick={() => setError("")}
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
-              {notice && (
-                <div className="notice" role="status">
-                  <Check size={17} />
-                  {notice}
-                </div>
-              )}
               {view === "New match" && (
                 <>
                   <div className="stepper">
@@ -881,7 +863,7 @@ export function MatcherWorkspace() {
                                     current.filter((item) => item.id !== r.id),
                                   );
                                   if (resumeId === r.id) setResumeId(undefined);
-                                  setNotice("");
+
                                   setSuccessToast({
                                     message: "Resume deleted.",
                                     id: Date.now(),
@@ -907,8 +889,8 @@ export function MatcherWorkspace() {
                   )}
                 </>
               )}
-              {view === "Resume" && (
-                selectedResume ? (
+              {view === "Resume" &&
+                (selectedResume ? (
                   <article className="card resume-detail">
                     <div className="resume-document-heading">
                       <div>
@@ -916,7 +898,10 @@ export function MatcherWorkspace() {
                         <h2>Full resume</h2>
                       </div>
                       <small>
-                        Added {new Date(selectedResume.createdAt).toLocaleDateString()}
+                        Added{" "}
+                        {new Date(
+                          selectedResume.createdAt,
+                        ).toLocaleDateString()}
                       </small>
                     </div>
                     {selectedResume.pdfAvailable ? (
@@ -955,8 +940,7 @@ export function MatcherWorkspace() {
                     }
                     label={user ? "Back to my resumes" : "Sign in"}
                   />
-                )
-              )}
+                ))}
               {view === "Match history" && (
                 <>
                   {!user ? (
@@ -1031,7 +1015,7 @@ export function MatcherWorkspace() {
                                         (item) => item.id !== a.id,
                                       ),
                                     );
-                                    setNotice("");
+
                                     setSuccessToast({
                                       message: "Match report deleted.",
                                       id: Date.now(),
@@ -1081,10 +1065,9 @@ export function MatcherWorkspace() {
             <button
               className="text-button"
               onClick={() => {
-                setNotice(
+                showToast(
                   "Scores estimate how documented experience matches a job, not your ability or likelihood of an offer. AI can make mistakes. Always review the evidence.",
                 );
-                window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             >
               <CircleHelp size={14} /> About matching
@@ -1099,7 +1082,7 @@ export function MatcherWorkspace() {
           expiredSessionHandled.current = false;
           setUser(u);
           refresh();
-          setNotice("");
+
           setSuccessToast({
             message: registered
               ? "Account created successfully. You're signed in!"
@@ -1112,6 +1095,7 @@ export function MatcherWorkspace() {
         <SuccessToast
           key={successToast.id}
           message={successToast.message}
+          variant={successToast.variant}
           onDismiss={dismissToast}
         />
       )}
