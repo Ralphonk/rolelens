@@ -22,6 +22,8 @@ import {
 import {
   credentials,
   registration,
+  profileSchema,
+  changePasswordSchema,
   resumeSchema,
   analysisSchema,
 } from "./validation.js";
@@ -83,7 +85,12 @@ app.post("/api/auth/register", limit(5, 15), async (req, res) => {
   try {
     const user = await db().user.create({
       data: { name: input.name, email: input.email, passwordHash },
-      select: { id: true, name: true, email: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatarDataUrl: true,
+      },
     });
     await createSession(res, user.id);
     res.status(201).json(user);
@@ -114,12 +121,22 @@ app.post("/api/auth/login", limit(10, 15), async (req, res) => {
     return;
   }
   await createSession(res, user.id);
-  res.json({ id: user.id, name: user.name, email: user.email });
+  res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatarDataUrl: user.avatarDataUrl,
+  });
 });
 app.get("/api/auth/me", requireUser, async (req: AuthedRequest, res) => {
   const user = await db().user.findUnique({
     where: { id: req.userId },
-    select: { id: true, name: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatarDataUrl: true,
+    },
   });
   if (!user) {
     res.status(401).json({ error: "Please sign in again." });
@@ -127,6 +144,54 @@ app.get("/api/auth/me", requireUser, async (req: AuthedRequest, res) => {
   }
   res.json(user);
 });
+app.patch("/api/auth/profile", requireUser, async (req: AuthedRequest, res) => {
+  const input = profileSchema.parse(req.body);
+  const user = await db().user.update({
+    where: { id: req.userId },
+    data: input,
+    select: { id: true, name: true, email: true, avatarDataUrl: true },
+  });
+  res.json(user);
+});
+app.post(
+  "/api/auth/change-password",
+  limit(5, 15),
+  requireUser,
+  async (req: AuthedRequest, res) => {
+    const input = changePasswordSchema.parse(req.body);
+    if (
+      Buffer.byteLength(input.currentPassword, "utf8") > 72 ||
+      Buffer.byteLength(input.newPassword, "utf8") > 72
+    ) {
+      res
+        .status(400)
+        .json({ error: "Password must be no more than 72 bytes." });
+      return;
+    }
+    const user = await db().user.findUnique({ where: { id: req.userId } });
+    if (
+      !user ||
+      !(await bcrypt.compare(input.currentPassword, user.passwordHash))
+    ) {
+      res.status(400).json({ error: "Current password is incorrect." });
+      return;
+    }
+    if (await bcrypt.compare(input.newPassword, user.passwordHash)) {
+      res.status(400).json({
+        error: "Choose a password different from your current password.",
+      });
+      return;
+    }
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    await db().$transaction([
+      db().user.update({ where: { id: user.id }, data: { passwordHash } }),
+      db().session.deleteMany({
+        where: { userId: user.id, id: { not: req.sessionId } },
+      }),
+    ]);
+    res.json({ ok: true });
+  },
+);
 app.post("/api/auth/logout", requireUser, async (req: AuthedRequest, res) => {
   await db().session.deleteMany({
     where: { id: req.sessionId, userId: req.userId },
@@ -290,7 +355,8 @@ app.post(
         },
       });
     } catch (error) {
-      if (blob && token) await del(blob.pathname, { token }).catch(() => undefined);
+      if (blob && token)
+        await del(blob.pathname, { token }).catch(() => undefined);
       throw error;
     }
     const { blobPathname, ...publicResume } = resume;

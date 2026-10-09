@@ -23,7 +23,7 @@ import {
 import { Button } from "./ui/button";
 import { AuthDialog } from "./auth-dialog";
 import { SuccessToast } from "./success-toast";
-import { LogoutDialog } from "./logout-dialog";
+import { AccountMenu } from "./account-menu";
 import { ConfirmDialog } from "./confirm-dialog";
 import { ScoreReport } from "./score-report";
 import {
@@ -295,44 +295,41 @@ export function MatcherWorkspace() {
     }
   }
   const accountControls = user ? (
-    <div className="topbar-user">
-      <div className="topbar-user-meta">
-        <span className="avatar">{user.name.slice(0, 2).toUpperCase()}</span>
-        <span className="topbar-user-text">
-          <b>{user.name}</b>
-          <small>{user.email}</small>
-        </span>
-      </div>
-      <LogoutDialog
-        disabled={!!busy}
-        onConfirm={async () => {
-          setBusy("logout");
-          try {
-            await api("/auth/logout", { method: "POST" });
-            setUser(null);
-            setResumes([]);
-            setAnalyses([]);
-            setWorkspaceCacheLoaded(false);
-            workspaceCacheUpdatedAt.current = 0;
-            setResume("");
-            setResumeFile(null);
-            setJob("");
-            setResult(null);
-            setHistoryReport(null);
-            setResumeId(undefined);
-            setMode("demo");
-            router.replace("/");
+    <AccountMenu
+      user={user}
+      disabled={!!busy}
+      onProfileSaved={(updated) => {
+        setUser(updated);
+        showToast("Profile updated.");
+      }}
+      onPasswordChanged={() => showToast("Password updated.")}
+      onSignOut={async () => {
+        setBusy("logout");
+        try {
+          await api("/auth/logout", { method: "POST" });
+          setUser(null);
+          setResumes([]);
+          setAnalyses([]);
+          setWorkspaceCacheLoaded(false);
+          workspaceCacheUpdatedAt.current = 0;
+          setResume("");
+          setResumeFile(null);
+          setJob("");
+          setResult(null);
+          setHistoryReport(null);
+          setResumeId(undefined);
+          setMode("demo");
+          router.replace("/");
 
-            setSuccessToast({
-              message: "Successfully logged out.",
-              id: Date.now(),
-            });
-          } finally {
-            setBusy("");
-          }
-        }}
-      />
-    </div>
+          setSuccessToast({
+            message: "Successfully logged out.",
+            id: Date.now(),
+          });
+        } finally {
+          setBusy("");
+        }
+      }}
+    />
   ) : (
     <Button variant="ghost" onClick={() => setAuthOpen(true)}>
       Sign in <ArrowUpRight size={16} />
@@ -388,19 +385,19 @@ export function MatcherWorkspace() {
             <span>Your career. Your data.</span>
           </div>
         </div>
-        <button
-          className="profile desktop-profile"
-          onClick={() => !user && setAuthOpen(true)}
-        >
-          <span className="avatar">
-            {user ? user.name.slice(0, 2).toUpperCase() : "G"}
-          </span>
-          <span>
-            <b>{user?.name || "Guest workspace"}</b>
-            <small>{user?.email || "Explore before you sign up"}</small>
-          </span>
-          {!user && <ChevronRight size={17} />}
-        </button>
+        {!user && (
+          <button
+            className="profile desktop-profile"
+            onClick={() => setAuthOpen(true)}
+          >
+            <span className="avatar">G</span>
+            <span>
+              <b>Guest workspace</b>
+              <small>Explore before you sign up</small>
+            </span>
+            <ChevronRight size={17} />
+          </button>
+        )}
       </aside>
       <div className="workspace-main">
         <div className="workspace-header">

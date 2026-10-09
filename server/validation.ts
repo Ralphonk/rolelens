@@ -9,6 +9,22 @@ export const credentials = z.object({
 export const registration = credentials.extend({
   name: z.string().trim().min(2).max(80),
 });
+export const profileSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  avatarDataUrl: z
+    .union([
+      z.null(),
+      z
+        .string()
+        .max(90_000)
+        .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/),
+    ])
+    .optional(),
+});
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(72),
+  newPassword: z.string().min(10).max(72),
+});
 export const resumeSchema = z.object({
   name: z.string().trim().min(1).max(180),
   text: z.string().trim().min(50).max(20000),
