@@ -29,3 +29,12 @@ export function resetEmailTemplate(code: string) {
 </table></td></tr></table></body></html>`,
   };
 }
+
+export function registrationEmailTemplate(code: string) {
+  const template = resetEmailTemplate(code);
+  return {
+    subject: "Verify your email | rolelens.",
+    text: template.text.replaceAll("Reset your password", "Verify your email").replace("password-reset window", "signup window").replace("If you didn't request a password reset, you can ignore this email. Your password hasn't changed.", "If you didn't request an account, you can ignore this email."),
+    html: template.html.replaceAll("Reset your password", "Verify your email").replace("Your password-reset code", "Your signup code").replace("Let's get you back to your workspace. Enter the code below in the password-reset window.", "Enter the code below in the signup window to create your workspace.").replace("Didn't request this? You can ignore this email. Your password hasn't changed.", "Didn't request an account? You can ignore this email."),
+  };
+}

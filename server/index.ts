@@ -16,12 +16,10 @@ import {
   createSession,
   clearSession,
   requireUser,
-  secret,
   type AuthedRequest,
 } from "./auth.js";
 import {
   credentials,
-  registration,
   profileSchema,
   changePasswordSchema,
   resumeSchema,
@@ -29,6 +27,7 @@ import {
 } from "./validation.js";
 import { analyzeResume } from "./ai.js";
 import { passwordResetRouter } from "./password-reset.js";
+import { registrationRouter } from "./registration.js";
 const app = express();
 app.disable("x-powered-by");
 // Render terminates public connections at its edge and forwards the client IP.
@@ -65,6 +64,7 @@ const limit = (max: number, minutes: number) =>
   });
 app.use("/api", limit(120, 15));
 app.use("/api/auth/password-reset", passwordResetRouter);
+app.use("/api/auth/registration", registrationRouter);
 app.get("/api/health", (_req, res) =>
   res.json({
     ok: true,
@@ -74,36 +74,7 @@ app.get("/api/health", (_req, res) =>
     resumeStorageMode: "blob",
   }),
 );
-app.post("/api/auth/register", limit(5, 15), async (req, res) => {
-  const input = registration.parse(req.body);
-  secret();
-  if (Buffer.byteLength(input.password, "utf8") > 72) {
-    res.status(400).json({ error: "Password must be no more than 72 bytes." });
-    return;
-  }
-  const passwordHash = await bcrypt.hash(input.password, 12);
-  try {
-    const user = await db().user.create({
-      data: { name: input.name, email: input.email, passwordHash },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarDataUrl: true,
-      },
-    });
-    await createSession(res, user.id);
-    res.status(201).json(user);
-  } catch (e) {
-    if ((e as { code?: string }).code === "P2002") {
-      res
-        .status(409)
-        .json({ error: "Unable to create this account. Try signing in." });
-      return;
-    }
-    throw e;
-  }
-});
+app.post("/api/auth/register", (_req, res) => res.status(410).json({ error: "Please verify your email to create an account." }));
 app.post("/api/auth/login", limit(10, 15), async (req, res) => {
   const input = credentials.parse(req.body);
   if (Buffer.byteLength(input.password, "utf8") > 72) {

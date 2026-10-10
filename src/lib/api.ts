@@ -20,6 +20,7 @@ export async function api<T>(
       path === "/auth/me" ||
       path === "/auth/login" ||
       path === "/auth/register" ||
+      path.startsWith("/auth/registration/") ||
       path.startsWith("/auth/password-reset/");
     const expiredSession = response.status === 401 && !isPublicAuthRequest;
     if (expiredSession && typeof window !== "undefined") {

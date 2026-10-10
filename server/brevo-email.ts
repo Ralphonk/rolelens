@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { resetEmailTemplate } from "./reset-email-template.js";
+import { resetEmailTemplate, registrationEmailTemplate } from "./reset-email-template.js";
 
 export function extractBlockedIp(message: string) {
   // Accept only a validated address immediately following an IP label.
@@ -23,11 +23,11 @@ export function deliveryDiagnostic(error: unknown) {
   return { category: name === "TimeoutError" || name === "AbortError" ? "timeout" : "transport_or_unknown_error" };
 }
 
-export async function sendBrevoCode(email: string, code: string) {
+export async function sendBrevoCode(email: string, code: string, purpose: "reset" | "registration" = "reset") {
   const key = process.env.BREVO_API_KEY?.trim();
   const sender = process.env.BREVO_SENDER_EMAIL?.trim();
   if (!key || !sender) throw new Error("Brevo is not configured.");
-  const template = resetEmailTemplate(code);
+  const template = purpose === "registration" ? registrationEmailTemplate(code) : resetEmailTemplate(code);
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: { "api-key": key, "Content-Type": "application/json", Accept: "application/json" },

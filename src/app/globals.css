@@ -1272,6 +1272,19 @@ footer .text-button {
   right: 13px;
   top: 13px;
 }
+.auth-modal-card {
+  padding: 0;
+  overflow: hidden;
+}
+.auth-modal-scroll {
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 35px;
+}
+.auth-modal-card .modal-close {
+  z-index: 1;
+  background: white;
+}
 .modal-card h2 {
   font-size: 29px;
 }
@@ -1295,7 +1308,9 @@ footer .text-button {
   gap: 8px;
 }
 .otp-boxes input {
-  padding: 12px 0;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
   text-align: center;
   font-size: 22px;
   font-weight: 600;
@@ -1634,6 +1649,12 @@ footer .text-button {
     flex-wrap: wrap;
   }
   .modal-card {
+    padding: 28px;
+  }
+  .auth-modal-card {
+    padding: 0;
+  }
+  .auth-modal-scroll {
     padding: 28px;
   }
   .section-title h2 {
